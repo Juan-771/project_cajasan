@@ -3,3 +3,6 @@ flask-cors
 pandas
 PyPDF2
 openpyxl
+python-docx
+pytesseract
+Pillow

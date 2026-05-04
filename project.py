@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from flask import Flask, jsonify, send_file, request
 from flask_cors import CORS
 from PyPDF2 import PdfReader
+from docx import Document
 import re
 
 app = Flask(__name__)
@@ -21,8 +22,9 @@ IMAP_SERVER = "imap.gmail.com"
 CARPETA = "facturas"
 ARCHIVO_EXCEL = "reporte_facturas.xlsx"
 
+
 # ----------------------------
-# 🔧 FUNCIONES
+# 🔧 UTILIDADES
 # ----------------------------
 
 def limpiar_tag(tag):
@@ -54,12 +56,22 @@ def limpiar_numero(valor):
         return 0
 
 
-def formatear_fecha(fecha_str):
-    fecha = datetime.strptime(fecha_str, "%Y-%m-%d")
-    return fecha.strftime("%d-%b-%Y")
+def clasificar_texto(texto):
+    texto = texto.lower()
+
+    if "cuenta de cobro" in texto:
+        return "Cuenta de Cobro"
+
+    if "factura" in texto:
+        return "Factura"
+
+    return "Desconocido"
 
 
-# 🔥 XML en CDATA
+# ----------------------------
+# XML
+# ----------------------------
+
 def obtener_root_real(root):
     for elem in root.iter():
         if limpiar_tag(elem.tag) == "description":
@@ -83,42 +95,89 @@ def buscar_total(root):
     return 0
 
 
-# 🔥 PDF
+# ----------------------------
+# PDF
+# ----------------------------
+
 def procesar_pdf(ruta_pdf):
+    datos = []
+
     try:
         reader = PdfReader(ruta_pdf)
         texto = ""
 
         for page in reader.pages:
-            texto += page.extract_text() + "\n"
+            texto += (page.extract_text() or "") + "\n"
 
-        match = re.search(r'Total\s*\$?\s*([\d.,]+)', texto, re.IGNORECASE)
+        tipo = clasificar_texto(texto)
 
-        total = limpiar_numero(match.group(1)) if match else 0
+        matches = re.findall(r'\$?\s*([\d.,]+)', texto)
 
-        return {
-            "ID_Factura": f"PDF_{os.path.basename(ruta_pdf)}",
-            "Empresa": "PDF",
-            "NIT": "",
-            "Cliente": "",
-            "Fecha": "",
-            "Ciudad": "",
-            "Total": total,
-            "Subtotal": 0,
-            "Total_Impuestos": 0,
-            "Moneda": "COP"
-        }
+        if matches:
+            total = limpiar_numero(matches[-1])
+
+            datos.append({
+                "Tipo": tipo,
+                "ID_Factura": f"PDF_{os.path.basename(ruta_pdf)}",
+                "Empresa": "PDF",
+                "NIT": "",
+                "Cliente": "",
+                "Fecha": "",
+                "Ciudad": "",
+                "Total": total,
+                "Subtotal": 0,
+                "Total_Impuestos": 0,
+                "Moneda": "COP"
+            })
 
     except Exception as e:
         print("Error PDF:", e)
-        return None
+
+    return datos
 
 
 # ----------------------------
-# 📩 PROCESAR CORREOS
+# DOCX
 # ----------------------------
 
-def procesar_correos(fecha_inicio=None, fecha_fin=None):
+def procesar_docx(ruta_docx):
+    datos = []
+
+    try:
+        doc = Document(ruta_docx)
+
+        texto = "\n".join([p.text for p in doc.paragraphs])
+
+        tipo = clasificar_texto(texto)
+
+        matches = re.findall(r'Total a Pagar.*?\$([\d.,]+)', texto)
+
+        for i, m in enumerate(matches):
+            datos.append({
+                "Tipo": tipo,
+                "ID_Factura": f"DOCX_{i}",
+                "Empresa": "CAJASAN",
+                "NIT": "",
+                "Cliente": "",
+                "Fecha": "",
+                "Ciudad": "",
+                "Total": limpiar_numero(m),
+                "Subtotal": 0,
+                "Total_Impuestos": 0,
+                "Moneda": "COP"
+            })
+
+    except Exception as e:
+        print("Error DOCX:", e)
+
+    return datos
+
+
+# ----------------------------
+# PROCESAR CORREOS
+# ----------------------------
+
+def procesar_correos():
     datos = []
 
     if os.path.exists(CARPETA):
@@ -129,17 +188,7 @@ def procesar_correos(fecha_inicio=None, fecha_fin=None):
     mail.login(EMAIL, PASSWORD)
     mail.select("inbox")
 
-    if fecha_inicio and fecha_fin:
-        since = formatear_fecha(fecha_inicio)
-
-        fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d") + timedelta(days=1)
-        before = fecha_fin_dt.strftime("%d-%b-%Y")
-
-        criterio = f'(SINCE {since} BEFORE {before})'
-        status, mensajes = mail.search(None, criterio)
-    else:
-        status, mensajes = mail.search(None, 'ALL')
-
+    status, mensajes = mail.search(None, 'ALL')
     ids = mensajes[0].split()
 
     for num in ids:
@@ -151,39 +200,22 @@ def procesar_correos(fecha_inicio=None, fecha_fin=None):
 
                 xml_encontrado = False
 
-                # 🔥 1. XML directo o en texto
                 for part in msg.walk():
-                    content_type = part.get_content_type()
                     filename = part.get_filename()
 
-                    if filename and filename.lower().endswith(".xml"):
-                        ruta_xml = os.path.join(CARPETA, filename)
+                    if filename:
 
-                        with open(ruta_xml, "wb") as f:
-                            f.write(part.get_payload(decode=True))
+                        # XML
+                        if filename.lower().endswith(".xml"):
+                            ruta = os.path.join(CARPETA, filename)
 
-                        xml_encontrado = True
+                            with open(ruta, "wb") as f:
+                                f.write(part.get_payload(decode=True))
 
-                    if content_type == "text/plain":
-                        try:
-                            texto = part.get_payload(decode=True).decode(errors="ignore")
+                            xml_encontrado = True
 
-                            if "<Invoice" in texto or "<CreditNote" in texto:
-                                ruta_xml = os.path.join(CARPETA, f"correo_{num.decode()}.xml")
-
-                                with open(ruta_xml, "w", encoding="utf-8") as f:
-                                    f.write(texto)
-
-                                xml_encontrado = True
-                        except:
-                            pass
-
-                # 📦 2. ZIP
-                if not xml_encontrado:
-                    for part in msg.walk():
-                        filename = part.get_filename()
-
-                        if filename and filename.lower().endswith(".zip"):
+                        # ZIP
+                        elif filename.lower().endswith(".zip"):
                             ruta_zip = os.path.join(CARPETA, filename)
 
                             with open(ruta_zip, "wb") as f:
@@ -192,22 +224,25 @@ def procesar_correos(fecha_inicio=None, fecha_fin=None):
                             with zipfile.ZipFile(ruta_zip, 'r') as zip_ref:
                                 zip_ref.extractall(CARPETA)
 
-                # 📄 3. PDF
-                for part in msg.walk():
-                    filename = part.get_filename()
+                        # PDF
+                        elif filename.lower().endswith(".pdf"):
+                            ruta_pdf = os.path.join(CARPETA, filename)
 
-                    if filename and filename.lower().endswith(".pdf"):
-                        ruta_pdf = os.path.join(CARPETA, filename)
+                            with open(ruta_pdf, "wb") as f:
+                                f.write(part.get_payload(decode=True))
 
-                        with open(ruta_pdf, "wb") as f:
-                            f.write(part.get_payload(decode=True))
+                            datos.extend(procesar_pdf(ruta_pdf))
 
-                        data_pdf = procesar_pdf(ruta_pdf)
+                        # DOCX
+                        elif filename.lower().endswith(".docx"):
+                            ruta_docx = os.path.join(CARPETA, filename)
 
-                        if data_pdf:
-                            datos.append(data_pdf)
+                            with open(ruta_docx, "wb") as f:
+                                f.write(part.get_payload(decode=True))
 
-    # 🔍 LEER XML
+                            datos.extend(procesar_docx(ruta_docx))
+
+    # XML
     for root_dir, dirs, files in os.walk(CARPETA):
         for file in files:
             if file.endswith(".xml"):
@@ -220,6 +255,7 @@ def procesar_correos(fecha_inicio=None, fecha_fin=None):
                     root = obtener_root_real(root)
 
                     datos.append({
+                        "Tipo": "Factura",
                         "ID_Factura": buscar(root, "ID"),
                         "Empresa": buscar(root, "RegistrationName"),
                         "NIT": buscar(root, "CompanyID"),
@@ -235,41 +271,22 @@ def procesar_correos(fecha_inicio=None, fecha_fin=None):
                 except Exception as e:
                     print("Error XML:", e)
 
-    # 📊 GUARDAR
+    # Excel
     if datos:
-        df_nuevo = pd.DataFrame(datos)
-
-        if os.path.exists(ARCHIVO_EXCEL):
-            df_existente = pd.read_excel(ARCHIVO_EXCEL)
-            df_total = pd.concat([df_existente, df_nuevo], ignore_index=True)
-
-            df_total.drop_duplicates(
-                subset=["ID_Factura", "Empresa", "Total"],
-                inplace=True
-            )
-        else:
-            df_total = df_nuevo
-
-        df_total.to_excel(ARCHIVO_EXCEL, index=False)
+        df = pd.DataFrame(datos)
+        df.drop_duplicates(subset=["ID_Factura", "Total"], inplace=True)
+        df.to_excel(ARCHIVO_EXCEL, index=False)
 
     return datos
 
 
 # ----------------------------
-# 🌐 API
+# API
 # ----------------------------
 
 @app.route("/procesar")
 def procesar():
-    inicio = request.args.get("inicio")
-    fin = request.args.get("fin")
-
-    if not inicio or not fin:
-        datos = procesar_correos()
-    else:
-        datos = procesar_correos(inicio, fin)
-
-    return jsonify(datos)
+    return jsonify(procesar_correos())
 
 
 @app.route("/descargar")
@@ -278,7 +295,7 @@ def descargar():
 
 
 # ----------------------------
-# 🚀 RUN
+# RUN
 # ----------------------------
 
 if __name__ == "__main__":
