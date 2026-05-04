@@ -8,13 +8,12 @@ async function ejecutarPython() {
         const inicio = document.getElementById("fechaInicio").value;
         const fin = document.getElementById("fechaFin").value;
 
-        // ⚠️ Validación básica
         if (!inicio || !fin) {
             alert("Selecciona ambas fechas");
             return;
         }
 
-        console.log("Consultando datos...");
+        console.log("Fechas:", inicio, fin);
 
         const res = await fetch(`${BASE_URL}/procesar?inicio=${inicio}&fin=${fin}`);
 
@@ -24,15 +23,14 @@ async function ejecutarPython() {
 
         const data = await res.json();
 
-        // 🔥 Detectar cambios reales
+        console.log("Datos recibidos:", data);
+
         const nuevoHash = JSON.stringify(data);
 
         if (nuevoHash === ultimoHash) {
             console.log("Sin cambios...");
             return;
         }
-
-        console.log("Datos actualizados");
 
         ultimoHash = nuevoHash;
         datosGlobal = data;
@@ -45,7 +43,6 @@ async function ejecutarPython() {
         alert("Error cargando datos 😥");
     }
 }
-
 
 function renderTabla(data) {
     const tbody = document.getElementById("tabla");
@@ -73,7 +70,6 @@ function renderTabla(data) {
     });
 }
 
-
 function calcularTotal(data) {
     let total = 0;
 
@@ -84,35 +80,10 @@ function calcularTotal(data) {
     document.getElementById("totalGeneral").textContent = formatearNumero(total);
 }
 
-
-function filtrar() {
-    const texto = document.getElementById("buscador").value.toLowerCase();
-
-    const filtrados = datosGlobal.filter(f =>
-        f.Empresa && f.Empresa.toLowerCase().includes(texto)
-    );
-
-    renderTabla(filtrados);
-    calcularTotal(filtrados);
-}
-
-
 function descargarExcel() {
     window.location.href = `${BASE_URL}/descargar`;
 }
 
-
 function formatearNumero(num) {
     return new Intl.NumberFormat('es-CO').format(num || 0);
 }
-
-
-// 🚀 Cargar automáticamente con fecha de hoy
-window.onload = () => {
-    const hoy = new Date().toISOString().split("T")[0];
-
-    document.getElementById("fechaInicio").value = hoy;
-    document.getElementById("fechaFin").value = hoy;
-
-    ejecutarPython();
-};
