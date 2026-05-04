@@ -1,13 +1,11 @@
 let datosGlobal = [];
 let ultimoHash = "";
 
-const BASE_URL = "https://tu-app.onrender.com";
-await fetch(`${BASE_URL}/procesar`);
-window.open(`${BASE_URL}/descargar`);
+const BASE_URL = "https://project-cajasan.onrender.com";
 
 async function ejecutarPython() {
     try {
-        const res = await fetch("http://127.0.0.1:5000/procesar");
+        const res = await fetch(`${BASE_URL}/procesar`);
         const data = await res.json();
 
         // 🔥 Detectar cambios reales
@@ -74,7 +72,7 @@ function filtrar() {
 }
 
 function descargarExcel() {
-    window.open("http://127.0.0.1:5000/descargar");
+    window.open(`${BASE_URL}/descargar`);
 }
 
 function formatearNumero(num) {
