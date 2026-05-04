@@ -5,7 +5,23 @@ const BASE_URL = "https://project-cajasan.onrender.com";
 
 async function ejecutarPython() {
     try {
-        const res = await fetch(`${BASE_URL}/procesar`);
+        const inicio = document.getElementById("fechaInicio").value;
+        const fin = document.getElementById("fechaFin").value;
+
+        // ⚠️ Validación básica
+        if (!inicio || !fin) {
+            alert("Selecciona ambas fechas");
+            return;
+        }
+
+        console.log("Consultando datos...");
+
+        const res = await fetch(`${BASE_URL}/procesar?inicio=${inicio}&fin=${fin}`);
+
+        if (!res.ok) {
+            throw new Error("Error en el servidor");
+        }
+
         const data = await res.json();
 
         // 🔥 Detectar cambios reales
@@ -16,7 +32,7 @@ async function ejecutarPython() {
             return;
         }
 
-        console.log("Actualizando datos...");
+        console.log("Datos actualizados");
 
         ultimoHash = nuevoHash;
         datosGlobal = data;
@@ -26,23 +42,30 @@ async function ejecutarPython() {
 
     } catch (error) {
         console.error("Error:", error);
+        alert("Error cargando datos 😥");
     }
 }
 
+
 function renderTabla(data) {
     const tbody = document.getElementById("tabla");
-    tbody.innerHTML = ""; // limpiar sin recargar página
+    tbody.innerHTML = "";
+
+    if (data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7">No hay datos</td></tr>`;
+        return;
+    }
 
     data.forEach(f => {
         const row = document.createElement("tr");
 
         row.innerHTML = `
-            <td>${f.ID_Factura}</td>
-            <td>${f.Empresa}</td>
-            <td>${f.NIT}</td>
-            <td>${f.Cliente}</td>
-            <td>${f.Fecha}</td>
-            <td>${f.Ciudad}</td>
+            <td>${f.ID_Factura || "-"}</td>
+            <td>${f.Empresa || "-"}</td>
+            <td>${f.NIT || "-"}</td>
+            <td>${f.Cliente || "-"}</td>
+            <td>${f.Fecha || "-"}</td>
+            <td>${f.Ciudad || "-"}</td>
             <td>$${formatearNumero(f.Total)}</td>
         `;
 
@@ -50,15 +73,17 @@ function renderTabla(data) {
     });
 }
 
+
 function calcularTotal(data) {
     let total = 0;
 
     data.forEach(f => {
-        total += parseFloat(f.Total || 0);
+        total += Number(f.Total) || 0;
     });
 
     document.getElementById("totalGeneral").textContent = formatearNumero(total);
 }
+
 
 function filtrar() {
     const texto = document.getElementById("buscador").value.toLowerCase();
@@ -71,13 +96,23 @@ function filtrar() {
     calcularTotal(filtrados);
 }
 
+
 function descargarExcel() {
-    window.open(`${BASE_URL}/descargar`);
+    window.location.href = `${BASE_URL}/descargar`;
 }
+
 
 function formatearNumero(num) {
-    return new Intl.NumberFormat('es-CO').format(num);
+    return new Intl.NumberFormat('es-CO').format(num || 0);
 }
 
-// 🚀 Cargar una vez al inicio
-ejecutarPython();
+
+// 🚀 Cargar automáticamente con fecha de hoy
+window.onload = () => {
+    const hoy = new Date().toISOString().split("T")[0];
+
+    document.getElementById("fechaInicio").value = hoy;
+    document.getElementById("fechaFin").value = hoy;
+
+    ejecutarPython();
+};
