@@ -11,7 +11,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-# 🔐 VARIABLES DE ENTORNO (RENDER)
+# 🔐 VARIABLES DE ENTORNO
 EMAIL = os.environ.get("EMAIL")
 PASSWORD = os.environ.get("PASSWORD")
 IMAP_SERVER = "imap.gmail.com"
@@ -39,37 +39,39 @@ def limpiar_numero(valor):
         return 0
 
 
+# 🔥 EXTRAER XML REAL (CDATA)
+def obtener_root_real(root):
+    for elem in root.iter():
+        if limpiar_tag(elem.tag) == "description":
+            if elem.text and "<Invoice" in elem.text:
+                try:
+                    return ET.fromstring(elem.text.strip())
+                except Exception as e:
+                    print("Error leyendo CDATA:", e)
+    return root
+
+
+# 💰 TOTAL ROBUSTO
 def buscar_total(root):
-    # 🔥 1. CustomTagGeneral (DIAN)
+    # PRIORIDAD 1: DIAN
     for elem in root.iter():
         tag = limpiar_tag(elem.tag)
 
-        if tag == "vlrpagarcop":
-            return limpiar_numero(elem.text)
+        if tag in ["vlrpagarcop", "totalnetofacturacop"]:
+            if elem.text and elem.text.strip():
+                return limpiar_numero(elem.text)
 
-        if tag == "totalnetofacturacop":
-            return limpiar_numero(elem.text)
-
-    # 🔁 2. LegalMonetaryTotal
+    # PRIORIDAD 2: PayableAmount
     for elem in root.iter():
-        if limpiar_tag(elem.tag) == "legalmonetarytotal":
+        if limpiar_tag(elem.tag) == "payableamount":
+            if elem.text and elem.text.strip():
+                return limpiar_numero(elem.text)
 
-            payable = None
-            tax_inclusive = None
-
-            for child in elem:
-                tag = limpiar_tag(child.tag)
-
-                if tag == "payableamount":
-                    payable = child.text
-
-                elif tag == "taxinclusiveamount":
-                    tax_inclusive = child.text
-
-            total = payable if payable else tax_inclusive
-
-            if total:
-                return limpiar_numero(total)
+    # PRIORIDAD 3: TaxInclusiveAmount
+    for elem in root.iter():
+        if limpiar_tag(elem.tag) == "taxinclusiveamount":
+            if elem.text and elem.text.strip():
+                return limpiar_numero(elem.text)
 
     return 0
 
@@ -132,6 +134,9 @@ def procesar_correos():
                     tree = ET.parse(ruta_xml)
                     root = tree.getroot()
 
+                    # 🔥 CLAVE: obtener XML real
+                    root = obtener_root_real(root)
+
                     datos.append({
                         "ID_Factura": buscar(root, "ID"),
                         "Empresa": buscar(root, "RegistrationName"),
@@ -171,7 +176,7 @@ def descargar():
     return send_file("reporte_facturas.xlsx", as_attachment=True)
 
 
-# 🚀 RUN (RENDER)
+# 🚀 RUN
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
