@@ -2,6 +2,7 @@ let datosGlobal = [];
 
 const BASE_URL = "https://project-cajasan.onrender.com";
 
+// 🔥 Ejecutar consulta por fechas
 async function ejecutarPython() {
     try {
         const inicio = document.getElementById("fechaInicio").value;
@@ -13,6 +14,11 @@ async function ejecutarPython() {
         }
 
         const res = await fetch(`${BASE_URL}/procesar?inicio=${inicio}&fin=${fin}`);
+
+        if (!res.ok) {
+            throw new Error("Error en la API");
+        }
+
         const data = await res.json();
 
         datosGlobal = data;
@@ -21,11 +27,12 @@ async function ejecutarPython() {
         calcularTotal(data);
 
     } catch (error) {
-        console.error(error);
-        alert("Error cargando datos");
+        console.error("Error:", error);
+        alert("Error cargando los datos");
     }
 }
 
+// 🔥 Renderizar tabla
 function renderTabla(data) {
     const tbody = document.getElementById("tabla");
     tbody.innerHTML = "";
@@ -52,6 +59,7 @@ function renderTabla(data) {
     });
 }
 
+// 🔥 Calcular total
 function calcularTotal(data) {
     let total = 0;
 
@@ -62,10 +70,42 @@ function calcularTotal(data) {
     document.getElementById("totalGeneral").textContent = formatearNumero(total);
 }
 
+// 🔥 Normalizar texto (para tildes)
+function normalizar(texto) {
+    return texto
+        ? texto.toLowerCase()
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+        : "";
+}
+
+// 🔥 Buscador
+function filtrar() {
+    const texto = normalizar(document.getElementById("buscador").value);
+
+    // si está vacío → mostrar todo
+    if (!texto) {
+        renderTabla(datosGlobal);
+        calcularTotal(datosGlobal);
+        return;
+    }
+
+    const filtrados = datosGlobal.filter(f =>
+        normalizar(f.Empresa).includes(texto) ||
+        normalizar(f.NIT).includes(texto) ||
+        normalizar(f.Cliente).includes(texto)
+    );
+
+    renderTabla(filtrados);
+    calcularTotal(filtrados);
+}
+
+// 🔥 Descargar Excel
 function descargarExcel() {
     window.location.href = `${BASE_URL}/descargar`;
 }
 
+// 🔥 Formatear números
 function formatearNumero(num) {
     return new Intl.NumberFormat('es-CO').format(num || 0);
 }
