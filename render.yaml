@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: facturacion-app
+    env: python
+    buildCommand: ""
+    startCommand: python project.py

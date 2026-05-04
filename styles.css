@@ -1,0 +1,52 @@
+body {
+    font-family: Arial;
+    background: linear-gradient(135deg, #0d47a1, #42a5f5);
+    margin: 0;
+    color: white;
+}
+
+.container {
+    max-width: 1000px;
+    margin: 30px auto;
+    background: rgba(255,255,255,0.1);
+    padding: 20px;
+    border-radius: 15px;
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+input {
+    padding: 8px;
+    flex: 1;
+}
+
+button {
+    background: #1565c0;
+    border: none;
+    padding: 10px;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #0d47a1;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: rgba(255,255,255,0.2);
+}
+
+th, td {
+    padding: 10px;
+}
+
+tr:hover {
+    background: rgba(255,255,255,0.1);
+}
