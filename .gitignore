@@ -1,0 +1,5 @@
+facturas/
+__pycache__/
+*.pyc
+.env
+reporte_facturas.xlsx
