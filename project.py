@@ -78,7 +78,7 @@ def buscar_total(root):
 def procesar_correos():
     datos = []
 
-    # 🧹 Limpiar carpeta para evitar duplicados
+    # 🧹 Limpiar carpeta
     if os.path.exists(CARPETA):
         shutil.rmtree(CARPETA)
     os.makedirs(CARPETA, exist_ok=True)
@@ -88,8 +88,9 @@ def procesar_correos():
     mail.login(EMAIL, PASSWORD)
     mail.select("inbox")
 
+    # 🔥 SOLO ÚLTIMOS 10 CORREOS
     status, mensajes = mail.search(None, 'ALL')
-    ids = mensajes[0].split()  # 🔥 todos los correos
+    ids = mensajes[0].split()[-10:]
 
     for num in ids:
         status, data = mail.fetch(num, "(RFC822)")
