@@ -1,5 +1,4 @@
 let datosGlobal = [];
-let ultimoHash = "";
 
 const BASE_URL = "https://project-cajasan.onrender.com";
 
@@ -13,34 +12,17 @@ async function ejecutarPython() {
             return;
         }
 
-        console.log("Fechas:", inicio, fin);
-
         const res = await fetch(`${BASE_URL}/procesar?inicio=${inicio}&fin=${fin}`);
-
-        if (!res.ok) {
-            throw new Error("Error en el servidor");
-        }
-
         const data = await res.json();
 
-        console.log("Datos recibidos:", data);
-
-        const nuevoHash = JSON.stringify(data);
-
-        if (nuevoHash === ultimoHash) {
-            console.log("Sin cambios...");
-            return;
-        }
-
-        ultimoHash = nuevoHash;
         datosGlobal = data;
 
         renderTabla(data);
         calcularTotal(data);
 
     } catch (error) {
-        console.error("Error:", error);
-        alert("Error cargando datos 😥");
+        console.error(error);
+        alert("Error cargando datos");
     }
 }
 

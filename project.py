@@ -20,6 +20,10 @@ CARPETA = "facturas"
 ARCHIVO_EXCEL = "reporte_facturas.xlsx"
 
 
+# ----------------------------
+# 🔧 FUNCIONES
+# ----------------------------
+
 def limpiar_tag(tag):
     return tag.split("}")[-1].lower()
 
@@ -75,6 +79,10 @@ def buscar_total(root):
     return 0
 
 
+# ----------------------------
+# 📩 PROCESAR CORREOS
+# ----------------------------
+
 def procesar_correos(fecha_inicio=None, fecha_fin=None):
     datos = []
 
@@ -94,13 +102,10 @@ def procesar_correos(fecha_inicio=None, fecha_fin=None):
 
         criterio = f'(SINCE {since} BEFORE {before})'
         status, mensajes = mail.search(None, criterio)
-
-        print("CRITERIO:", criterio)
     else:
         status, mensajes = mail.search(None, 'ALL')
 
     ids = mensajes[0].split()
-    print("CORREOS ENCONTRADOS:", len(ids))
 
     for num in ids:
         status, data = mail.fetch(num, "(RFC822)")
@@ -109,13 +114,44 @@ def procesar_correos(fecha_inicio=None, fecha_fin=None):
             if isinstance(response, tuple):
                 msg = email.message_from_bytes(response[1])
 
+                xml_encontrado = False
+
+                # 🔥 1. PROCESAR .EML
                 for part in msg.walk():
+                    content_type = part.get_content_type()
                     filename = part.get_filename()
 
-                    if filename:
-                        filename_lower = filename.lower()
+                    # XML adjunto
+                    if filename and filename.lower().endswith(".xml"):
+                        ruta_xml = os.path.join(CARPETA, filename)
 
-                        if filename_lower.endswith(".zip"):
+                        with open(ruta_xml, "wb") as f:
+                            f.write(part.get_payload(decode=True))
+
+                        xml_encontrado = True
+
+                    # XML dentro del texto
+                    if content_type == "text/plain":
+                        try:
+                            texto = part.get_payload(decode=True).decode(errors="ignore")
+
+                            if "<Invoice" in texto:
+                                ruta_xml = os.path.join(CARPETA, f"correo_{num.decode()}.xml")
+
+                                with open(ruta_xml, "w", encoding="utf-8") as f:
+                                    f.write(texto)
+
+                                xml_encontrado = True
+
+                        except:
+                            pass
+
+                # 📦 2. SI NO HAY XML → ZIP
+                if not xml_encontrado:
+                    for part in msg.walk():
+                        filename = part.get_filename()
+
+                        if filename and filename.lower().endswith(".zip"):
                             ruta_zip = os.path.join(CARPETA, filename)
 
                             with open(ruta_zip, "wb") as f:
@@ -124,12 +160,7 @@ def procesar_correos(fecha_inicio=None, fecha_fin=None):
                             with zipfile.ZipFile(ruta_zip, 'r') as zip_ref:
                                 zip_ref.extractall(CARPETA)
 
-                        elif filename_lower.endswith(".xml"):
-                            ruta_xml = os.path.join(CARPETA, filename)
-
-                            with open(ruta_xml, "wb") as f:
-                                f.write(part.get_payload(decode=True))
-
+    # 🔍 LEER XML
     for root_dir, dirs, files in os.walk(CARPETA):
         for file in files:
             if file.endswith(".xml"):
@@ -157,20 +188,40 @@ def procesar_correos(fecha_inicio=None, fecha_fin=None):
                 except Exception as e:
                     print("Error XML:", e)
 
+    # 📊 GUARDAR SIN DUPLICADOS
     if datos:
-        df = pd.DataFrame(datos)
-        df.drop_duplicates(subset=["ID_Factura", "Empresa", "Total"], inplace=True)
-        df.to_excel(ARCHIVO_EXCEL, index=False)
+        df_nuevo = pd.DataFrame(datos)
+
+        if os.path.exists(ARCHIVO_EXCEL):
+            df_existente = pd.read_excel(ARCHIVO_EXCEL)
+            df_total = pd.concat([df_existente, df_nuevo], ignore_index=True)
+
+            df_total.drop_duplicates(
+                subset=["ID_Factura", "Empresa", "Total"],
+                inplace=True
+            )
+        else:
+            df_total = df_nuevo
+
+        df_total.to_excel(ARCHIVO_EXCEL, index=False)
 
     return datos
 
+
+# ----------------------------
+# 🌐 API
+# ----------------------------
 
 @app.route("/procesar")
 def procesar():
     inicio = request.args.get("inicio")
     fin = request.args.get("fin")
 
-    datos = procesar_correos(inicio, fin)
+    if not inicio or not fin:
+        datos = procesar_correos()
+    else:
+        datos = procesar_correos(inicio, fin)
+
     return jsonify(datos)
 
 
@@ -178,6 +229,10 @@ def procesar():
 def descargar():
     return send_file(ARCHIVO_EXCEL, as_attachment=True)
 
+
+# ----------------------------
+# 🚀 RUN
+# ----------------------------
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
